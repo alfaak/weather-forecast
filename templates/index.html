@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SkyPulse | Live GPS Weather & Precision Forecast</title>
+  <meta name="description" content="Hyper-accurate live weather forecasting with real-time GPS tracking, hourly radar, 7-day outlook, air quality, and atmospheric metrics.">
+  <meta name="theme-color" content="#0b1329">
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+
+  <!-- Stylesheet -->
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body class="theme-default">
+  <!-- Dynamic Atmospheric Background Canvas -->
+  <canvas id="weatherCanvas" class="weather-canvas" aria-hidden="true"></canvas>
+  <div class="background-overlay" aria-hidden="true"></div>
+
+  <!-- Main Container -->
+  <div class="app-wrapper">
+    <!-- Top Header & Navigation -->
+    <header class="app-header">
+      <div class="brand-container">
+        <div class="brand-icon-wrapper">
+          <i data-lucide="cloud-lightning" class="brand-icon"></i>
+        </div>
+        <div class="brand-text">
+          <span class="brand-title">SkyPulse</span>
+          <span class="brand-subtitle">GPS Forecast Hub</span>
+        </div>
+      </div>
+
+      <!-- Search & Autocomplete Bar -->
+      <div class="search-section">
+        <div class="search-input-wrapper">
+          <i data-lucide="search" class="search-icon"></i>
+          <input 
+            type="text" 
+            id="citySearchInput" 
+            placeholder="Search any city, region, or coordinates..." 
+            autocomplete="off"
+            spellcheck="false"
+          >
+          <button id="clearSearchBtn" class="clear-search-btn" title="Clear input" style="display: none;">
+            <i data-lucide="x"></i>
+          </button>
+          <div id="searchSpinner" class="search-spinner" style="display: none;"></div>
+        </div>
+        <!-- Autocomplete Suggestions Dropdown -->
+        <div id="searchDropdown" class="search-dropdown" style="display: none;"></div>
+      </div>
+
+      <!-- Actions & Controls -->
+      <div class="header-actions">
+        <!-- Live GPS Button -->
+        <button id="gpsLocationBtn" class="action-btn gps-action-btn" title="Detect your exact GPS location">
+          <div class="gps-beacon-ring"></div>
+          <i data-lucide="navigation" class="gps-icon"></i>
+          <span class="btn-text">My GPS</span>
+        </button>
+
+        <!-- Live GPS Watch Mode Toggle -->
+        <button id="gpsWatchToggleBtn" class="action-btn watch-btn" title="Toggle automatic GPS live-tracking as you move">
+          <i data-lucide="radar"></i>
+          <span class="watch-label">Tracking</span>
+          <span id="watchStatusDot" class="watch-dot"></span>
+        </button>
+
+        <!-- Unit Switcher -->
+        <div class="unit-toggle" id="unitToggle">
+          <button class="unit-btn active" data-unit="celsius">°C</button>
+          <button class="unit-btn" data-unit="fahrenheit">°F</button>
+        </div>
+
+        <!-- Refresh Button -->
+        <button id="refreshBtn" class="action-btn icon-only-btn" title="Refresh weather data">
+          <i data-lucide="rotate-cw" id="refreshIcon"></i>
+        </button>
+      </div>
+    </header>
+
+    <!-- Location Permission / Status Alert Banner -->
+    <div id="gpsStatusBanner" class="gps-status-banner" style="display: none;">
+      <div class="banner-content">
+        <div class="banner-icon-container">
+          <i data-lucide="map-pin" id="bannerIcon"></i>
+        </div>
+        <div class="banner-text">
+          <h4 id="bannerTitle">GPS Location Permission</h4>
+          <p id="bannerDesc">Allow GPS access to automatically deliver precise hyper-local weather alerts for your coordinates.</p>
+        </div>
+      </div>
+      <div class="banner-actions">
+        <button id="bannerGrantBtn" class="banner-btn primary">Enable GPS</button>
+        <button id="bannerDismissBtn" class="banner-btn secondary">Dismiss</button>
+      </div>
+    </div>
+
+    <!-- Quick Location Chips -->
+    <div class="quick-locations-bar">
+      <div class="quick-chips-scroll" id="quickChipsContainer">
+        <span class="chips-label"><i data-lucide="sparkles" class="mini-icon"></i> Popular:</span>
+        <button class="location-chip" data-lat="40.7128" data-lon="-74.0060" data-name="New York, USA">New York</button>
+        <button class="location-chip" data-lat="51.5074" data-lon="-0.1278" data-name="London, UK">London</button>
+        <button class="location-chip" data-lat="35.6762" data-lon="139.6503" data-name="Tokyo, Japan">Tokyo</button>
+        <button class="location-chip" data-lat="48.8566" data-lon="2.3522" data-name="Paris, France">Paris</button>
+        <button class="location-chip" data-lat="25.2048" data-lon="55.2708" data-name="Dubai, UAE">Dubai</button>
+        <button class="location-chip" data-lat="1.3521" data-lon="103.8198" data-name="Singapore">Singapore</button>
+        <button class="location-chip" data-lat="-33.8688" data-lon="151.2093" data-name="Sydney, Australia">Sydney</button>
+      </div>
+      <!-- Saved Favorites Container -->
+      <div class="saved-favorites-wrapper" id="savedFavoritesContainer"></div>
+    </div>
+
+    <!-- Loading Skeleton Screen -->
+    <div id="loadingSkeleton" class="loading-skeleton" style="display: none;">
+      <div class="skeleton-card skeleton-hero"></div>
+      <div class="skeleton-grid">
+        <div class="skeleton-card"></div>
+        <div class="skeleton-card"></div>
+        <div class="skeleton-card"></div>
+      </div>
+    </div>
+
+    <!-- Main Dashboard View -->
+    <main id="weatherDashboard" class="weather-dashboard">
+      <!-- Hero Weather Overview Card -->
+      <section class="hero-card" id="heroCard">
+        <div class="hero-header">
+          <div class="location-info">
+            <div class="location-title-row">
+              <i data-lucide="map-pin" class="hero-pin-icon"></i>
+              <h1 id="currentLocationName" class="location-name">Detecting Location...</h1>
+              <button id="saveFavoriteBtn" class="fav-btn" title="Save this location to favorites">
+                <i data-lucide="bookmark" id="favoriteIcon"></i>
+              </button>
+            </div>
+            <div class="coordinates-pill" id="coordinatesPill">
+              <span id="gpsSignalIndicator" class="signal-indicator live"></span>
+              <span id="coordsDisplay">GPS Coordinates</span>
+              <span id="gpsAccuracyTag" class="accuracy-tag">± 0m</span>
+            </div>
+          </div>
+          <div class="time-meta">
+            <span id="localTimeDisplay" class="local-time">--:--</span>
+            <span id="lastUpdatedDisplay" class="updated-time">Updated just now</span>
+          </div>
+        </div>
+
+        <div class="hero-body">
+          <div class="temp-primary-group">
+            <div class="temp-value-wrapper">
+              <span id="currentTemp" class="current-temp">--</span>
+              <span id="tempUnitSymbol" class="temp-unit">°C</span>
+            </div>
+            <div class="temp-meta-column">
+              <div class="condition-badge" id="conditionBadge">
+                <span id="weatherIconContainer" class="hero-weather-icon">
+                  <i data-lucide="sun"></i>
+                </span>
+                <span id="currentConditionLabel" class="condition-label">Loading weather...</span>
+              </div>
+              <div class="feels-like-text">
+                Feels like <strong id="feelsLikeTemp">--°</strong>
+              </div>
+              <div class="minmax-pill">
+                <span><i data-lucide="arrow-up" class="mini-arrow up"></i> <span id="todayHigh">--°</span></span>
+                <span class="divider">/</span>
+                <span><i data-lucide="arrow-down" class="mini-arrow down"></i> <span id="todayLow">--°</span></span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Hero Highlights Preview -->
+          <div class="hero-quick-stats">
+            <div class="quick-stat-item">
+              <i data-lucide="wind" class="stat-icon"></i>
+              <div class="stat-content">
+                <span class="stat-label">Wind</span>
+                <span id="heroWind" class="stat-val">-- km/h</span>
+              </div>
+            </div>
+            <div class="quick-stat-item">
+              <i data-lucide="droplets" class="stat-icon"></i>
+              <div class="stat-content">
+                <span class="stat-label">Humidity</span>
+                <span id="heroHumidity" class="stat-val">--%</span>
+              </div>
+            </div>
+            <div class="quick-stat-item">
+              <i data-lucide="gauge" class="stat-icon"></i>
+              <div class="stat-content">
+                <span class="stat-label">Pressure</span>
+                <span id="heroPressure" class="stat-val">-- hPa</span>
+              </div>
+            </div>
+            <div class="quick-stat-item">
+              <i data-lucide="shield-alert" class="stat-icon"></i>
+              <div class="stat-content">
+                <span class="stat-label">Air Quality</span>
+                <span id="heroAQI" class="stat-val aqi-badge">--</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Section: 24-Hour Forecast & Trend Chart -->
+      <section class="dashboard-section hourly-section">
+        <div class="section-header">
+          <div class="section-title-group">
+            <i data-lucide="clock" class="section-icon"></i>
+            <h2>Hourly Forecast & Trend</h2>
+          </div>
+          <div class="forecast-toggle-pills">
+            <button class="pill-btn active" id="viewHourlyCards">Timeline</button>
+            <button class="pill-btn" id="viewHourlyChart">Chart Trend</button>
+          </div>
+        </div>
+
+        <!-- Scrollable Hourly Cards Carousel -->
+        <div id="hourlyCardsWrapper" class="hourly-cards-wrapper">
+          <div id="hourlyCardsContainer" class="hourly-cards-scroll"></div>
+        </div>
+
+        <!-- Canvas Interactive Temperature Trend Chart -->
+        <div id="hourlyChartWrapper" class="hourly-chart-wrapper" style="display: none;">
+          <canvas id="tempChartCanvas" class="temp-chart-canvas"></canvas>
+          <div id="chartTooltip" class="chart-tooltip" style="display: none;"></div>
+        </div>
+      </section>
+
+      <!-- Section: Bento Grid Highlights Matrix -->
+      <section class="dashboard-section">
+        <div class="section-header">
+          <div class="section-title-group">
+            <i data-lucide="activity" class="section-icon"></i>
+            <h2>Atmospheric & Environmental Highlights</h2>
+          </div>
+        </div>
+
+        <div class="bento-grid">
+          <!-- Card: Air Quality Index -->
+          <div class="bento-card aqi-card">
+            <div class="card-head">
+              <div class="card-head-title">
+                <i data-lucide="leaf"></i>
+                <span>Air Quality Index</span>
+              </div>
+              <span id="aqiStatusTag" class="badge-tag">Good</span>
+            </div>
+            <div class="card-body">
+              <div class="aqi-meter-row">
+                <div class="aqi-circle">
+                  <span id="aqiNumber" class="aqi-number">--</span>
+                  <span class="aqi-sub">US AQI</span>
+                </div>
+                <div class="aqi-scale-bar-wrapper">
+                  <div class="aqi-bar-gradient">
+                    <div id="aqiIndicatorMarker" class="aqi-marker"></div>
+                  </div>
+                  <div class="aqi-scale-labels">
+                    <span>Good</span>
+                    <span>Mod</span>
+                    <span>Unhealthy</span>
+                    <span>Hazard</span>
+                  </div>
+                </div>
+              </div>
+              <div class="pollutant-grid">
+                <div class="pollutant-item">
+                  <span class="p-name">PM2.5</span>
+                  <span id="pollutantPM25" class="p-val">-- µg/m³</span>
+                </div>
+                <div class="pollutant-item">
+                  <span class="p-name">PM10</span>
+                  <span id="pollutantPM10" class="p-val">-- µg/m³</span>
+                </div>
+                <div class="pollutant-item">
+                  <span class="p-name">Ozone (O₃)</span>
+                  <span id="pollutantO3" class="p-val">-- µg/m³</span>
+                </div>
+                <div class="pollutant-item">
+                  <span class="p-name">NO₂</span>
+                  <span id="pollutantNO2" class="p-val">-- µg/m³</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Card: UV Index -->
+          <div class="bento-card uv-card">
+            <div class="card-head">
+              <div class="card-head-title">
+                <i data-lucide="sun-medium"></i>
+                <span>UV Radiation</span>
+              </div>
+              <span id="uvCategoryTag" class="badge-tag">Low</span>
+            </div>
+            <div class="card-body">
+              <div class="metric-giant">
+                <span id="uvValue">--</span>
+                <span class="metric-scale">/ 11+</span>
+              </div>
+              <div class="uv-progress-track">
+                <div id="uvProgressBar" class="uv-progress-fill"></div>
+              </div>
+              <p id="uvAdvice" class="metric-advice">Protection required during peak midday hours.</p>
+            </div>
+          </div>
+
+          <!-- Card: Wind & Compass Radar -->
+          <div class="bento-card wind-card">
+            <div class="card-head">
+              <div class="card-head-title">
+                <i data-lucide="wind"></i>
+                <span>Wind & Gusts</span>
+              </div>
+            </div>
+            <div class="card-body wind-body">
+              <div class="compass-container">
+                <div class="compass-dial">
+                  <span class="cardinal north">N</span>
+                  <span class="cardinal east">E</span>
+                  <span class="cardinal south">S</span>
+                  <span class="cardinal west">W</span>
+                  <div id="compassNeedle" class="compass-needle">
+                    <div class="needle-arrow"></div>
+                  </div>
+                  <div class="compass-center"></div>
+                </div>
+              </div>
+              <div class="wind-details">
+                <div class="wind-speed-main">
+                  <span id="windSpeedVal" class="big-val">--</span>
+                  <span id="windSpeedUnit" class="big-unit">km/h</span>
+                </div>
+                <div class="wind-sub-info">
+                  <span id="windDirectionText">-- Direction</span>
+                  <span>Gusts up to <strong id="windGustsVal">--</strong></span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Card: Sunrise & Sunset Solar Arc -->
+          <div class="bento-card sun-cycle-card">
+            <div class="card-head">
+              <div class="card-head-title">
+                <i data-lucide="sunset"></i>
+                <span>Sun & Day Cycle</span>
+              </div>
+            </div>
+            <div class="card-body">
+              <div class="solar-arc-container">
+                <svg viewBox="0 0 200 100" class="solar-svg">
+                  <path d="M 20 90 A 80 80 0 0 1 180 90" fill="none" stroke="rgba(255,255,255,0.15)" stroke-width="4" stroke-dasharray="4 4" />
+                  <path id="solarProgressPath" d="M 20 90 A 80 80 0 0 1 180 90" fill="none" stroke="url(#sunGradient)" stroke-width="4" stroke-dasharray="260" stroke-dashoffset="130" />
+                  <defs>
+                    <linearGradient id="sunGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                      <stop offset="0%" stop-color="#f59e0b" />
+                      <stop offset="50%" stop-color="#fbbf24" />
+                      <stop offset="100%" stop-color="#f43f5e" />
+                    </linearGradient>
+                  </defs>
+                  <circle id="sunPositionOrb" cx="100" cy="20" r="7" fill="#fbbf24" filter="drop-shadow(0 0 6px #f59e0b)" />
+                </svg>
+              </div>
+              <div class="sun-times-row">
+                <div class="sun-point">
+                  <i data-lucide="sunrise" class="sunrise-icon"></i>
+                  <div>
+                    <span class="sub-label">Sunrise</span>
+                    <strong id="sunriseTime" class="time-label">--:--</strong>
+                  </div>
+                </div>
+                <div class="sun-point">
+                  <i data-lucide="sunset" class="sunset-icon"></i>
+                  <div>
+                    <span class="sub-label">Sunset</span>
+                    <strong id="sunsetTime" class="time-label">--:--</strong>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Card: Humidity & Dew Point -->
+          <div class="bento-card humidity-card">
+            <div class="card-head">
+              <div class="card-head-title">
+                <i data-lucide="droplet"></i>
+                <span>Humidity</span>
+              </div>
+              <span id="humidityStatusTag" class="badge-tag">Normal</span>
+            </div>
+            <div class="card-body">
+              <div class="metric-giant">
+                <span id="humidityVal">--</span>
+                <span class="metric-scale">%</span>
+              </div>
+              <div class="humidity-droplet-bar">
+                <div id="humidityBarFill" class="humidity-bar-fill"></div>
+              </div>
+              <p class="metric-advice">Dew point is <strong id="dewPointVal">--°</strong></p>
+            </div>
+          </div>
+
+          <!-- Card: Visibility & Atmosphere -->
+          <div class="bento-card visibility-card">
+            <div class="card-head">
+              <div class="card-head-title">
+                <i data-lucide="eye"></i>
+                <span>Atmospheric Clarity</span>
+              </div>
+            </div>
+            <div class="card-body">
+              <div class="metric-giant">
+                <span id="visibilityVal">--</span>
+                <span id="visibilityUnit" class="metric-scale">km</span>
+              </div>
+              <div class="visibility-status-wrapper">
+                <span id="visibilityDesc" class="status-badge">Clear Horizon</span>
+                <span id="cloudCoverDesc" class="sub-text">Cloud Cover: --%</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Section: 7-Day Extended Forecast -->
+      <section class="dashboard-section daily-section">
+        <div class="section-header">
+          <div class="section-title-group">
+            <i data-lucide="calendar"></i>
+            <h2>7-Day Weather Outlook</h2>
+          </div>
+          <span class="section-badge">Weekly Precision</span>
+        </div>
+
+        <div id="dailyForecastList" class="daily-forecast-list"></div>
+      </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="app-footer">
+      <div class="footer-content">
+        <p>Built with pure Python Flask & HTML5 Geolocation. Deployable instantly on Vercel Serverless.</p>
+        <p class="footer-credits">Data provided with precision by <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo API</a> & Reverse Geocoding.</p>
+      </div>
+    </footer>
+  </div>
+
+  <!-- Toast Notification Container -->
+  <div id="toastContainer" class="toast-container" aria-live="polite"></div>
+
+  <!-- Script -->
+  <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>
